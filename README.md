@@ -45,6 +45,15 @@ docker run -p 3000:3000 mcp-random-name-server
 - `GET /health` - Health check endpoint
 - `GET /` - Server information
 
+### API Documentation
+
+A complete OpenAPI 3.0 specification is available in [`openapi.yaml`](./openapi.yaml), which includes:
+- Detailed endpoint documentation
+- Request/response schemas
+- JSON-RPC examples for MCP protocol
+- Session management details
+- Error response formats
+
 ## Available Tools
 
 ### get_random_name

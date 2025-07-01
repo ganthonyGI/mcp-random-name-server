@@ -1,0 +1,445 @@
+openapi: 3.0.3
+info:
+  title: MCP Random Name Server
+  description: |
+    A Model Context Protocol (MCP) server that provides a random name tool using Streamable HTTP transport.
+    
+    This server implements the MCP protocol over HTTP, supporting session management, server-sent events for notifications, and proper JSON-RPC communication.
+    
+    The main functionality is provided through the `get_random_name` tool which returns random names from a predefined list.
+  version: 1.0.0
+  license:
+    name: MIT
+  contact:
+    name: MCP Random Name Server
+    url: https://github.com/ganthonyGI/mcp-random-name-server
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://your-domain.com
+    description: Production server
+
+paths:
+  /:
+    get:
+      summary: Get server information
+      description: Returns basic information about the MCP server including name, version, transport type, and available endpoints.
+      operationId: getServerInfo
+      responses:
+        '200':
+          description: Server information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+              example:
+                name: MCP Random Name Server
+                version: 1.0.0
+                transport: Streamable HTTP
+                endpoints:
+                  mcp: /mcp
+                  health: /health
+                description: An MCP server that provides a random name tool using Streamable HTTP transport
+
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the server.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                server: mcp-random-name-server
+
+  /mcp:
+    post:
+      summary: MCP JSON-RPC endpoint
+      description: |
+        Main endpoint for Model Context Protocol communication using JSON-RPC 2.0.
+        
+        Supports session management through the `mcp-session-id` header. For initialization requests, 
+        no session ID is required. For subsequent requests, the session ID returned during initialization 
+        must be included.
+        
+        The server supports the following MCP methods:
+        - `initialize` - Initialize a new MCP session
+        - `tools/list` - List available tools
+        - `tools/call` - Call a tool (e.g., get_random_name)
+      operationId: mcpJsonRpc
+      parameters:
+        - name: mcp-session-id
+          in: header
+          description: Session ID for existing MCP sessions (not required for initialization)
+          required: false
+          schema:
+            type: string
+            format: uuid
+            example: 123e4567-e89b-12d3-a456-426614174000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonRpcRequest'
+            examples:
+              initialize:
+                summary: Initialize MCP session
+                value:
+                  jsonrpc: "2.0"
+                  id: 1
+                  method: initialize
+                  params:
+                    protocolVersion: "2025-03-26"
+                    capabilities: {}
+                    clientInfo:
+                      name: example-client
+                      version: 1.0.0
+              listTools:
+                summary: List available tools
+                value:
+                  jsonrpc: "2.0"
+                  id: 2
+                  method: tools/list
+              callTool:
+                summary: Call the random name tool
+                value:
+                  jsonrpc: "2.0"
+                  id: 3
+                  method: tools/call
+                  params:
+                    name: get_random_name
+                    arguments: {}
+      responses:
+        '200':
+          description: JSON-RPC response
+          headers:
+            mcp-session-id:
+              description: Session ID (included in initialization responses and when session management is enabled)
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcResponse'
+              examples:
+                initializeResponse:
+                  summary: Initialization response
+                  value:
+                    jsonrpc: "2.0"
+                    id: 1
+                    result:
+                      protocolVersion: "2025-03-26"
+                      capabilities:
+                        tools: {}
+                      serverInfo:
+                        name: mcp-random-name-server
+                        version: 1.0.0
+                listToolsResponse:
+                  summary: List tools response
+                  value:
+                    jsonrpc: "2.0"
+                    id: 2
+                    result:
+                      tools:
+                        - name: get_random_name
+                          description: Returns a random name from a predefined list
+                          inputSchema:
+                            type: object
+                            properties: {}
+                            additionalProperties: false
+                callToolResponse:
+                  summary: Tool call response
+                  value:
+                    jsonrpc: "2.0"
+                    id: 3
+                    result:
+                      content:
+                        - type: text
+                          text: Alice
+        '400':
+          description: Bad request (invalid session ID or malformed request)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+              example:
+                jsonrpc: "2.0"
+                error:
+                  code: -32000
+                  message: "Bad Request: No valid session ID provided"
+                id: null
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+              example:
+                jsonrpc: "2.0"
+                error:
+                  code: -32603
+                  message: Internal server error
+                id: null
+
+    get:
+      summary: Server-sent events stream
+      description: |
+        Establishes a server-sent events (SSE) stream for receiving real-time notifications from the MCP server.
+        
+        Requires a valid session ID in the `mcp-session-id` header. The session must be established 
+        through a prior POST request to the `/mcp` endpoint.
+        
+        Used for receiving server-to-client notifications such as progress updates, resource changes, 
+        and other real-time events.
+      operationId: mcpSseStream
+      parameters:
+        - name: mcp-session-id
+          in: header
+          description: Valid session ID from an established MCP session
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 123e4567-e89b-12d3-a456-426614174000
+      responses:
+        '200':
+          description: Server-sent events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-sent events stream with MCP notifications
+              example: |
+                event: notification
+                data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"abc123","progress":50,"total":100}}
+                
+        '400':
+          description: Invalid or missing session ID
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Invalid or missing session ID
+
+    delete:
+      summary: Terminate MCP session
+      description: |
+        Terminates an active MCP session and cleans up associated resources.
+        
+        Requires a valid session ID in the `mcp-session-id` header. After successful termination,
+        the session ID becomes invalid and cannot be used for further requests.
+      operationId: terminateMcpSession
+      parameters:
+        - name: mcp-session-id
+          in: header
+          description: Valid session ID to terminate
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: 123e4567-e89b-12d3-a456-426614174000
+      responses:
+        '200':
+          description: Session terminated successfully
+        '400':
+          description: Invalid or missing session ID
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Invalid or missing session ID
+
+components:
+  schemas:
+    ServerInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Server name
+          example: MCP Random Name Server
+        version:
+          type: string
+          description: Server version
+          example: 1.0.0
+        transport:
+          type: string
+          description: Transport protocol used
+          example: Streamable HTTP
+        endpoints:
+          type: object
+          properties:
+            mcp:
+              type: string
+              description: Main MCP endpoint path
+              example: /mcp
+            health:
+              type: string
+              description: Health check endpoint path
+              example: /health
+        description:
+          type: string
+          description: Server description
+          example: An MCP server that provides a random name tool using Streamable HTTP transport
+      required:
+        - name
+        - version
+        - transport
+        - endpoints
+        - description
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum: [ok, error]
+          example: ok
+        server:
+          type: string
+          description: Server identifier
+          example: mcp-random-name-server
+      required:
+        - status
+        - server
+
+    JsonRpcRequest:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+          description: JSON-RPC version
+        id:
+          oneOf:
+            - type: string
+            - type: number
+            - type: null
+          description: Request identifier
+        method:
+          type: string
+          description: Method name
+          examples: [initialize, tools/list, tools/call]
+        params:
+          type: object
+          description: Method parameters
+      required:
+        - jsonrpc
+        - method
+
+    JsonRpcResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+          description: JSON-RPC version
+        id:
+          oneOf:
+            - type: string
+            - type: number
+            - type: null
+          description: Request identifier
+        result:
+          type: object
+          description: Method result
+      required:
+        - jsonrpc
+        - id
+        - result
+
+    JsonRpcError:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+          description: JSON-RPC version
+        id:
+          oneOf:
+            - type: string
+            - type: number
+            - type: null
+          description: Request identifier
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              description: Error code
+              examples: [-32000, -32603]
+            message:
+              type: string
+              description: Error message
+              examples: ["Bad Request: No valid session ID provided", "Internal server error"]
+            data:
+              description: Additional error data
+          required:
+            - code
+            - message
+      required:
+        - jsonrpc
+        - error
+
+    McpTool:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Tool name
+          example: get_random_name
+        description:
+          type: string
+          description: Tool description
+          example: Returns a random name from a predefined list
+        inputSchema:
+          type: object
+          description: JSON Schema for tool input
+          example:
+            type: object
+            properties: {}
+            additionalProperties: false
+      required:
+        - name
+        - description
+        - inputSchema
+
+    ToolCallResult:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [text, image, resource]
+              text:
+                type: string
+                description: Text content (when type is 'text')
+            required:
+              - type
+          description: Tool execution result content
+          example:
+            - type: text
+              text: Alice
+      required:
+        - content
+
+tags:
+  - name: Server Info
+    description: Server information and health endpoints
+  - name: MCP Protocol
+    description: Model Context Protocol endpoints for JSON-RPC communication
+
+security: []
