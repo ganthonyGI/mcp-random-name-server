@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "mcp__asana__asana_list_workspaces",
+      "mcp__asana__asana_create_project",
+      "mcp__asana__asana_get_teams_for_workspace",
+      "mcp__asana__asana_create_task",
+      "mcp__asana__asana_update_task",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(timeout 2 npm start)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}
